@@ -2,12 +2,17 @@ import time
 import json
 import sqlite3
 import requests
+import os
 from flask import Flask, render_template, request, jsonify
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 
 # Database configuration
-DATABASE = 'magic_collector.db'
+DATABASE = os.getenv('DATABASE', 'magic_collector.db')
 
 # Custom Jinja2 filters
 @app.template_filter('from_json')
@@ -1157,6 +1162,78 @@ def fetch_cards(set_code):
     else:
         return jsonify({'success': False, 'message': f'Failed to fetch cards for set {set_code}'})
 
+@app.route('/settings')
+def view_settings():
+    """Settings page"""
+    return render_template('settings.html')
+
+@app.route('/delete_all_trades', methods=['POST'])
+def delete_all_trades():
+    """Delete all trades from the database"""
+    try:
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        
+        # Get count before deleting
+        cursor.execute('SELECT COUNT(*) FROM trade_data')
+        count_before = cursor.fetchone()[0]
+        
+        # Delete all trades
+        cursor.execute('DELETE FROM trade_data')
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Successfully deleted {count_before} trades from the database'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error deleting trades: {str(e)}'})
+
+@app.route('/get_database_stats')
+def get_database_stats():
+    """Get database statistics"""
+    try:
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        
+        # Get total cards count
+        cursor.execute('SELECT COUNT(*) FROM cards')
+        total_cards = cursor.fetchone()[0]
+        
+        # Get total sets count
+        cursor.execute('SELECT COUNT(*) FROM sets')
+        total_sets = cursor.fetchone()[0]
+        
+        # Get cards in collection count
+        cursor.execute('SELECT COUNT(*) FROM user_collection')
+        collection_cards = cursor.fetchone()[0]
+        
+        # Get total trades count
+        cursor.execute('SELECT COUNT(*) FROM trade_data')
+        total_trades = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'stats': {
+                'total_cards': total_cards,
+                'total_sets': total_sets,
+                'collection_cards': collection_cards,
+                'total_trades': total_trades
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error getting database stats: {str(e)}'
+        })
+
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, port=5001)
+    host = os.getenv('HOST', '127.0.0.1')
+    port = int(os.getenv('PORT', 5001))
+    app.run(debug=True, host=host, port=port)

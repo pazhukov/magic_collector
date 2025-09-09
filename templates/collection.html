@@ -108,20 +108,6 @@
 </div>
 {% endif %}
 
-<!-- Clear Collection Button -->
-{% if collection %}
-<div class="row mt-5">
-    <div class="col-12">
-        <div class="text-center">
-            <hr class="my-4">
-            <button class="btn btn-danger btn-lg" onclick="clearCollection()">
-                <i class="fas fa-trash-alt"></i> Clear Collection
-            </button>
-            <p class="text-muted small mt-2">This will permanently remove all cards from your collection</p>
-        </div>
-    </div>
-</div>
-{% endif %}
 
 <script>
 function increaseQuantity(cardId, isFoil) {
@@ -226,62 +212,6 @@ function showMessage(text, type) {
     }, 3000);
 }
 
-function clearCollection() {
-    // Show warning dialog
-    const confirmed = confirm(
-        '⚠️ WARNING: This will permanently delete ALL cards from your collection!\n\n' +
-        'This action cannot be undone.\n\n' +
-        'Are you sure you want to clear your entire collection?'
-    );
-    
-    if (!confirmed) {
-        return;
-    }
-    
-    // Show second confirmation for extra safety
-    const doubleConfirmed = confirm(
-        '🚨 FINAL WARNING 🚨\n\n' +
-        'You are about to delete your entire collection worth ${{ "%.2f"|format(total_collection_value) }}!\n\n' +
-        'Type "DELETE" in the next prompt to confirm.'
-    );
-    
-    if (!doubleConfirmed) {
-        return;
-    }
-    
-    // Final confirmation with text input
-    const userInput = prompt(
-        'Type "DELETE" (in all caps) to permanently clear your collection:'
-    );
-    
-    if (userInput !== 'DELETE') {
-        showMessage('Collection clearing cancelled.', 'info');
-        return;
-    }
-    
-    // Proceed with clearing collection
-    fetch('/clear_collection', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showMessage(data.message, 'success');
-            // Reload the page to show empty collection
-            setTimeout(() => {
-                location.reload();
-            }, 2000);
-        } else {
-            showMessage('Error: ' + data.message, 'danger');
-        }
-    })
-    .catch(error => {
-        showMessage('Error: ' + error.message, 'danger');
-    });
-}
 
 function updateCollectionPrices() {
     const updateButton = document.getElementById('updateButton');
