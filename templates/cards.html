@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}{{ set_info[2] if set_info else 'Unknown Set' }} Cards - Magic Collector{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1><i class="fas fa-cards-blank"></i> {{ set_info[2] if set_info else 'Unknown Set' }}</h1>
+                {% if set_info %}
+                <p class="text-muted">{{ set_info[3] }} • {{ set_info[4] or 'Unknown Release Date' }}</p>
+                {% endif %}
+            </div>
+            <div>
+                {% if set_info %}
+                <button class="btn btn-primary" onclick="fetchCards('{{ set_info[1] }}')">
+                    <i class="fas fa-sync"></i> Refresh Cards
+                </button>
+                {% endif %}
+                <a href="/sets" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Sets
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if set_info %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Set Information</h5>
+                        <p><strong>Code:</strong> {{ set_info[1] }}</p>
+                        <p><strong>Type:</strong> {{ set_info[3] }}</p>
+                        <p><strong>Released:</strong> {{ set_info[4] or 'Unknown' }}</p>
+                        <p><strong>Cards:</strong> {{ set_info[8] or 0 }}</p>
+                        {% if set_info[5] %}
+                        <p><strong>Block:</strong> {{ set_info[6] or set_info[5] }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Set Details</h5>
+                        {% if set_info[9] %}
+                        <span class="badge bg-info me-2">Digital</span>
+                        {% endif %}
+                        {% if set_info[10] %}
+                        <span class="badge bg-warning me-2">Foil Only</span>
+                        {% endif %}
+                        {% if set_info[11] %}
+                        <span class="badge bg-success me-2">Non-Foil Only</span>
+                        {% endif %}
+                        {% if set_info[16] %}
+                        <p><strong>Printed Size:</strong> {{ set_info[16] }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row">
+    {% if cards %}
+        {% for card in cards %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                {% if card[39] and ' // ' in card[39] %}
+                <!-- Double-sided card - show first face image -->
+                {% set card_faces_string = card[39] %}
+                {% set first_face = card_faces_string.split(' // ')[0] %}
+                {% if ' |IMG:' in first_face %}
+                {% set face_parts = first_face.split(' |IMG:') %}
+                {% set image_url = face_parts[1] %}
+                <div class="card-img-top bg-light d-flex justify-content-center align-items-center" style="min-height: 200px;">
+                    <img src="{{ image_url }}" class="card-image" alt="{{ card[1] }}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                </div>
+                {% else %}
+                <div class="card-img-top bg-light d-flex justify-content-center align-items-center" style="min-height: 200px;">
+                    <div class="text-center">
+                        <i class="fas fa-exchange-alt fa-2x text-muted mb-2"></i>
+                        <div class="small text-muted">Double-sided card</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% elif card[37] %}
+                <!-- Single-sided card -->
+                {% set image_data = card[37]|from_json %}
+                <div class="card-img-top bg-light d-flex justify-content-center align-items-center" style="min-height: 200px;">
+                    <img src="{{ image_data.normal or '' }}" class="card-image" alt="{{ card[1] }}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                </div>
+                {% else %}
+                <!-- No image available -->
+                <div class="card-img-top card-image bg-light d-flex align-items-center justify-content-center" style="min-height: 200px;">
+                    <i class="fas fa-image fa-3x text-muted"></i>
+                </div>
+                {% endif %}
+                <div class="card-body">
+                    <h6 class="card-title">
+                        <a href="/card/{{ card[0] }}" class="text-decoration-none text-dark">
+                            {{ card[1] }}
+                        </a>
+                    </h6>
+                    <p class="card-text">
+                        <small class="text-muted">
+                            <strong>Mana Cost:</strong> {{ card[2] or 'None' }}<br>
+                            <strong>Type:</strong> {{ card[4] or 'Unknown' }}<br>
+                            <strong>Rarity:</strong> {{ card[24] or 'Unknown' }}<br>
+                            <strong>Collector #:</strong> {{ card[23] or 'Unknown' }}
+                        </small>
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="col-12">
+            <div class="alert alert-warning text-center">
+                <h4><i class="fas fa-exclamation-triangle"></i> No Cards Available</h4>
+                <p>No cards have been loaded for this set yet. Click the "Refresh Cards" button to fetch cards from the Scryfall API.</p>
+                {% if set_info %}
+                <button class="btn btn-primary" onclick="fetchCards('{{ set_info[1] }}')">
+                    <i class="fas fa-download"></i> Fetch Cards
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+{% if cards %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-bar"></i> Cards Summary</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <h4 class="text-primary">{{ cards|length }}</h4>
+                        <p class="text-muted">Total Cards</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h4 class="text-success">{{ cards|selectattr('24', 'equalto', 'mythic')|list|length }}</h4>
+                        <p class="text-muted">Mythic Rares</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h4 class="text-info">{{ cards|selectattr('24', 'equalto', 'rare')|list|length }}</h4>
+                        <p class="text-muted">Rares</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h4 class="text-warning">{{ cards|selectattr('24', 'equalto', 'uncommon')|list|length }}</h4>
+                        <p class="text-muted">Uncommons</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

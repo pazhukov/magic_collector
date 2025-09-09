@@ -1,0 +1,6 @@
+__pycache__/
+*.py[codz]
+*$py.class
+magic_collector.db
+.idea/
+.DS_Store

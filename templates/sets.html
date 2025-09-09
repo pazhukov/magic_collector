@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Magic Sets - Magic Collector{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1><i class="fas fa-layer-group"></i> Magic Sets</h1>
+            <button class="btn btn-primary" onclick="fetchSets()">
+                <i class="fas fa-sync"></i> Refresh Sets
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    {% if sets %}
+        {% for set in sets %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card set-card h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h5 class="card-title">{{ set[2] }}</h5>
+                        <span class="badge bg-secondary">{{ set[3] }}</span>
+                    </div>
+                    <p class="card-text">
+                        <strong>Code:</strong> {{ set[1] }}<br>
+                        <strong>Released:</strong> {{ set[4] or 'Unknown' }}<br>
+                        <strong>Cards:</strong> {{ set[8] or 0 }}<br>
+                        {% if set[5] %}
+                        <strong>Block:</strong> {{ set[6] or set[5] }}<br>
+                        {% endif %}
+                        {% if set[9] %}
+                        <span class="badge bg-info">Digital</span>
+                        {% endif %}
+                        {% if set[10] %}
+                        <span class="badge bg-warning">Foil Only</span>
+                        {% endif %}
+                        {% if set[11] %}
+                        <span class="badge bg-success">Non-Foil Only</span>
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="card-footer">
+                    <div class="btn-group w-100" role="group">
+                        <a href="/cards/{{ set[1] }}" class="btn btn-outline-primary">
+                            <i class="fas fa-cards-blank"></i> View Cards
+                        </a>
+                        <button class="btn btn-outline-success" onclick="fetchCards('{{ set[1] }}')">
+                            <i class="fas fa-download"></i> Fetch Cards
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="col-12">
+            <div class="alert alert-warning text-center">
+                <h4><i class="fas fa-exclamation-triangle"></i> No Sets Available</h4>
+                <p>No sets have been loaded yet. Click the "Refresh Sets" button to fetch sets from the Scryfall API.</p>
+                <button class="btn btn-primary" onclick="fetchSets()">
+                    <i class="fas fa-download"></i> Fetch All Sets
+                </button>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+{% if sets %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-bar"></i> Sets Summary</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <h4 class="text-primary">{{ sets|length }}</h4>
+                        <p class="text-muted">Total Sets</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h4 class="text-success">{{ sets|selectattr('9', 'equalto', True)|list|length }}</h4>
+                        <p class="text-muted">Digital Sets</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h4 class="text-info">{{ sets|map(attribute='8')|reject('none')|sum }}</h4>
+                        <p class="text-muted">Total Cards</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h4 class="text-warning">{{ sets|selectattr('3', 'equalto', 'core')|list|length }}</h4>
+                        <p class="text-muted">Core Sets</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
