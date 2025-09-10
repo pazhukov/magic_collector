@@ -1236,4 +1236,5 @@ if __name__ == '__main__':
     init_db()
     host = os.getenv('HOST', '127.0.0.1')
     port = int(os.getenv('PORT', 5001))
-    app.run(debug=True, host=host, port=port)
+    debug = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes', 'on')
+    app.run(debug=debug, host=host, port=port)
