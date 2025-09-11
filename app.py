@@ -436,7 +436,7 @@ def store_cards(cards_data, set_code):
         type_line = card_data.get('type_line', '')
 
 
-        # Handle card_faces data
+        # Handle card_faces data - store as JSON for better parsing
         card_faces_data = card_data.get('card_faces', [])
         if card_faces_data:
             card_name = card_faces_data[0].get('name', '') + " // " + card_faces_data[1].get('name', '') 
@@ -444,20 +444,8 @@ def store_cards(cards_data, set_code):
             mana_cost = card_faces_data[0].get('mana_cost', '') + "  // " + card_faces_data[1].get('mana_cost', '') 
             type_line = card_faces_data[0].get('type_line', '') + " // " + card_faces_data[1].get('type_line', '') 
 
-            # Extract face information and join with ' // ' separator
-            face_info = []
-            for face in card_faces_data:
-                face_name = face.get('name', '')
-                face_type = face.get('type_line', '')
-                # face_text = face.get('oracle_text', '')
-                face_images = face.get('image_uris', {})
-                
-                # Create a summary of the face with image URL
-                face_summary = f"{face_name} ({face_type})"
-                if face_images and face_images.get('normal'):
-                    face_summary += f" |IMG:{face_images['normal']}"
-                face_info.append(face_summary)
-            card_faces = ' // '.join(face_info)
+            # Store card_faces as JSON for better parsing
+            card_faces = json.dumps(card_faces_data)
         else:
             # No card_faces data, store as empty string
             card_faces = ''
@@ -597,39 +585,43 @@ def view_card_detail(card_id):
     # Check if this is a double-sided card and get card_faces data
     card_faces_data = None
     if card and card[39]:  # card_faces field is at index 39
-        # card_faces is now stored as a string with ' // ' separator
-        card_faces_string = card[39]
-        if card_faces_string and ' // ' in card_faces_string:
-            # Split the faces and create a simple structure for the template
-            face_strings = card_faces_string.split(' // ')
-            card_faces_data = []
-            for i, face_string in enumerate(face_strings):
-                # Parse the face string format: "Name (Type) |IMG:url"
-                image_url = None
-                if ' |IMG:' in face_string:
-                    name_type, image_url = face_string.split(' |IMG:', 1)
-                else:
-                    name_type = face_string
-                
-                # Extract name and type from "Name (Type)"
-                if ' (' in name_type and name_type.endswith(')'):
-                    name = name_type.split(' (')[0]
-                    type_line = name_type.split(' (')[1][:-1]  # Remove closing parenthesis
-                else:
-                    name = name_type
-                    type_line = ''
-                
-                # Create image_uris structure if we have an image URL
-                image_uris = None
-                if image_url:
-                    image_uris = {'normal': image_url, 'large': image_url}
-                
-                card_faces_data.append({
-                    'name': name,
-                    'type_line': type_line,
-                    'oracle_text': '',  # We don't store oracle text in the new format
-                    'image_uris': image_uris
-                })
+        try:
+            # Try to parse as JSON first (new format)
+            card_faces_data = json.loads(card[39])
+        except (json.JSONDecodeError, TypeError):
+            # Fallback for old format - try to parse the old string format
+            card_faces_string = card[39]
+            if card_faces_string and ' // ' in card_faces_string:
+                # Split the faces and create a simple structure for the template
+                face_strings = card_faces_string.split(' // ')
+                card_faces_data = []
+                for i, face_string in enumerate(face_strings):
+                    # Parse the face string format: "Name (Type) |IMG:url"
+                    image_url = None
+                    if ' |IMG:' in face_string:
+                        name_type, image_url = face_string.split(' |IMG:', 1)
+                    else:
+                        name_type = face_string
+                    
+                    # Extract name and type from "Name (Type)"
+                    if ' (' in name_type and name_type.endswith(')'):
+                        name = name_type.split(' (')[0]
+                        type_line = name_type.split(' (')[1][:-1]  # Remove closing parenthesis
+                    else:
+                        name = name_type
+                        type_line = ''
+                    
+                    # Create image_uris structure if we have an image URL
+                    image_uris = None
+                    if image_url:
+                        image_uris = {'normal': image_url, 'large': image_url}
+                    
+                    card_faces_data.append({
+                        'name': name,
+                        'type_line': type_line,
+                        'oracle_text': '',  # We don't store oracle text in the old format
+                        'image_uris': image_uris
+                    })
     
     # Get other printings of the same card (same name, different sets)
     other_printings = []
@@ -1420,6 +1412,115 @@ def delete_all_decks():
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error deleting decks: {str(e)}'})
+
+def store_single_card(card_data):
+    """Store a single card in the database"""
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+    
+    # Extract basic card information
+    card_name = card_data.get('name', '')
+    card_oracle_text = card_data.get('oracle_text', '')
+    mana_cost = card_data.get('mana_cost', '')
+    type_line = card_data.get('type_line', '')
+
+    # Handle card_faces data - store as JSON for better parsing
+    card_faces_data = card_data.get('card_faces', [])
+    if card_faces_data:
+        card_name = card_faces_data[0].get('name', '') + " // " + card_faces_data[1].get('name', '') 
+        card_oracle_text = card_faces_data[0].get('oracle_text', '') + " \n//\n " + card_faces_data[1].get('oracle_text', '') 
+        mana_cost = card_faces_data[0].get('mana_cost', '') + "  // " + card_faces_data[1].get('mana_cost', '') 
+        type_line = card_faces_data[0].get('type_line', '') + " // " + card_faces_data[1].get('type_line', '') 
+
+        # Store card_faces as JSON for better parsing
+        card_faces = json.dumps(card_faces_data)
+    else:
+        # No card_faces data, store as empty string
+        card_faces = ''
+    
+    # Convert other data to JSON strings
+    legalities = json.dumps(card_data.get('legalities', {}))
+    prices = json.dumps(card_data.get('prices', {}))
+    related_uris = json.dumps(card_data.get('related_uris', {}))
+    purchase_uris = json.dumps(card_data.get('purchase_uris', {}))
+    image_uris = json.dumps(card_data.get('image_uris', {}))
+    
+    cursor.execute('''
+        INSERT OR REPLACE INTO cards (
+            id, name, mana_cost, cmc, type_line, oracle_text, power, toughness,
+            colors, color_identity, legalities, games, reserved, foil, nonfoil,
+            finishes, oversized, promo, reprint, variation, set_id, set_code,
+            set_name, collector_number, rarity, artist, border_color, frame,
+            full_art, textless, booster, story_spotlight, edhrec_rank, penny_rank,
+            prices, related_uris, purchase_uris, image_uris, card_faces
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        card_data.get('id'),
+        card_name,
+        mana_cost,
+        card_data.get('cmc', 0),
+        type_line,
+        card_oracle_text,
+        card_data.get('power'),
+        card_data.get('toughness'),
+        json.dumps(card_data.get('colors', [])),
+        json.dumps(card_data.get('color_identity', [])),
+        legalities,
+        json.dumps(card_data.get('games', [])),
+        card_data.get('reserved', False),
+        card_data.get('foil', False),
+        card_data.get('nonfoil', False),
+        json.dumps(card_data.get('finishes', [])),
+        card_data.get('oversized', False),
+        card_data.get('promo', False),
+        card_data.get('reprint', False),
+        card_data.get('variation', False),
+        card_data.get('set_id'),
+        card_data.get('set'),
+        card_data.get('set_name'),
+        card_data.get('collector_number'),
+        card_data.get('rarity'),
+        card_data.get('artist'),
+        card_data.get('border_color'),
+        card_data.get('frame'),
+        card_data.get('full_art', False),
+        card_data.get('textless', False),
+        card_data.get('booster', False),
+        card_data.get('story_spotlight', False),
+        card_data.get('edhrec_rank'),
+        card_data.get('penny_rank'),
+        prices,
+        related_uris,
+        purchase_uris,
+        image_uris,
+        card_faces
+    ))
+    
+    # Save legalities and prices history
+    card_id = card_data.get('id')
+    if card_id:
+        save_legalities_history(cursor, card_id, card_data.get('legalities', {}))
+        save_prices_history(cursor, card_id, card_data.get('prices', {}))
+    
+    conn.commit()
+    conn.close()
+
+@app.route('/refresh_card/<card_id>')
+def refresh_card(card_id):
+    """Refresh card data from Scryfall API"""
+    try:
+        # Get the card from Scryfall API
+        card_data = get_card_from_scryfall(card_id)
+        if not card_data:
+            return "Card not found in Scryfall API", 404
+        
+        # Store the updated card data
+        store_single_card(card_data)
+        
+        return f"Card {card_id} refreshed successfully. <a href='/card/{card_id}'>View card</a>"
+        
+    except Exception as e:
+        return f"Error refreshing card: {str(e)}", 500
 
 @app.route('/deck/<int:deck_id>')
 def deck_view(deck_id):
