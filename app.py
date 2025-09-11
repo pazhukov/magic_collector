@@ -183,6 +183,31 @@ def init_db():
         )
     ''')
     
+    # Create decks table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS decks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            format TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Create deck_cards table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS deck_cards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            deck_id INTEGER,
+            card_name TEXT NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            is_sideboard BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (deck_id) REFERENCES decks (id) ON DELETE CASCADE
+        )
+    ''')
+    
     # Add card_faces column if it doesn't exist (migration for existing databases)
     try:
         cursor.execute('ALTER TABLE cards ADD COLUMN card_faces TEXT')
@@ -192,6 +217,8 @@ def init_db():
     
     conn.commit()
     conn.close()
+
+
 
 def get_scryfall_sets():
     """Fetch all sets from Scryfall API"""
@@ -1214,6 +1241,10 @@ def get_database_stats():
         cursor.execute('SELECT COUNT(*) FROM trade_data')
         total_trades = cursor.fetchone()[0]
         
+        # Get total decks count
+        cursor.execute('SELECT COUNT(*) FROM decks')
+        total_decks = cursor.fetchone()[0]
+        
         conn.close()
         
         return jsonify({
@@ -1222,7 +1253,8 @@ def get_database_stats():
                 'total_cards': total_cards,
                 'total_sets': total_sets,
                 'collection_cards': collection_cards,
-                'total_trades': total_trades
+                'total_trades': total_trades,
+                'total_decks': total_decks
             }
         })
         
@@ -1232,8 +1264,451 @@ def get_database_stats():
             'message': f'Error getting database stats: {str(e)}'
         })
 
+@app.route('/decks')
+def decks():
+    """Display all decks"""
+    try:
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        
+        # Get all decks
+        cursor.execute('''
+            SELECT id, name, description, format, created_at, updated_at
+            FROM decks
+            ORDER BY updated_at DESC
+        ''')
+        decks = cursor.fetchall()
+        
+        # Get deck cards for each deck
+        deck_data = []
+        for deck in decks:
+            deck_id, name, description, format_name, created_at, updated_at = deck
+            
+            # Get main deck cards
+            cursor.execute('''
+                SELECT card_name, quantity
+                FROM deck_cards
+                WHERE deck_id = ? AND is_sideboard = FALSE
+                ORDER BY card_name
+            ''', (deck_id,))
+            main_deck = cursor.fetchall()
+            
+            # Get sideboard cards
+            cursor.execute('''
+                SELECT card_name, quantity
+                FROM deck_cards
+                WHERE deck_id = ? AND is_sideboard = TRUE
+                ORDER BY card_name
+            ''', (deck_id,))
+            sideboard = cursor.fetchall()
+            
+            deck_data.append({
+                'id': deck_id,
+                'name': name,
+                'description': description,
+                'format': format_name,
+                'created_at': created_at,
+                'updated_at': updated_at,
+                'main_deck': main_deck,
+                'sideboard': sideboard
+            })
+        
+        conn.close()
+        
+        return render_template('decks.html', decks=deck_data)
+        
+    except Exception as e:
+        return f"Error loading decks: {str(e)}", 500
+
+@app.route('/add_deck', methods=['POST'])
+def add_deck():
+    """Add a new deck"""
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        description = data.get('description', '').strip()
+        format_name = data.get('format', '').strip()
+        main_deck = data.get('main_deck', [])
+        sideboard = data.get('sideboard', [])
+        
+        if not name:
+            return jsonify({'success': False, 'message': 'Deck name is required'})
+        
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        
+        # Insert deck
+        cursor.execute('''
+            INSERT INTO decks (name, description, format)
+            VALUES (?, ?, ?)
+        ''', (name, description, format_name))
+        
+        deck_id = cursor.lastrowid
+        
+        # Insert main deck cards
+        for card in main_deck:
+            card_name = card.get('name', '').strip()
+            quantity = int(card.get('quantity', 1))
+            if card_name:
+                cursor.execute('''
+                    INSERT INTO deck_cards (deck_id, card_name, quantity, is_sideboard)
+                    VALUES (?, ?, ?, FALSE)
+                ''', (deck_id, card_name, quantity))
+        
+        # Insert sideboard cards
+        for card in sideboard:
+            card_name = card.get('name', '').strip()
+            quantity = int(card.get('quantity', 1))
+            if card_name:
+                cursor.execute('''
+                    INSERT INTO deck_cards (deck_id, card_name, quantity, is_sideboard)
+                    VALUES (?, ?, ?, TRUE)
+                ''', (deck_id, card_name, quantity))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Deck added successfully'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error adding deck: {str(e)}'})
+
+@app.route('/delete_deck', methods=['POST'])
+def delete_deck():
+    """Delete a deck"""
+    try:
+        data = request.get_json()
+        deck_id = data.get('deck_id')
+        
+        if not deck_id:
+            return jsonify({'success': False, 'message': 'Deck ID is required'})
+        
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        
+        # Delete deck (cascade will delete deck_cards)
+        cursor.execute('DELETE FROM decks WHERE id = ?', (deck_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Deck deleted successfully'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error deleting deck: {str(e)}'})
+
+@app.route('/delete_all_decks', methods=['POST'])
+def delete_all_decks():
+    """Delete all decks"""
+    try:
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        
+        # Get count before deleting
+        cursor.execute('SELECT COUNT(*) FROM decks')
+        count_before = cursor.fetchone()[0]
+        
+        # Delete all decks (cascade will delete deck_cards)
+        cursor.execute('DELETE FROM decks')
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Successfully deleted {count_before} decks from the database'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error deleting decks: {str(e)}'})
+
+@app.route('/deck/<int:deck_id>')
+def deck_view(deck_id):
+    """View individual deck details"""
+    try:
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        
+        # Get deck info
+        cursor.execute('''
+            SELECT id, name, description, format, created_at, updated_at
+            FROM decks
+            WHERE id = ?
+        ''', (deck_id,))
+        deck = cursor.fetchone()
+        
+        if not deck:
+            return "Deck not found", 404
+        
+        deck_id, name, description, format_name, created_at, updated_at = deck
+        
+        # Get main deck cards
+        cursor.execute('''
+            SELECT card_name, quantity
+            FROM deck_cards
+            WHERE deck_id = ? AND is_sideboard = FALSE
+            ORDER BY card_name
+        ''', (deck_id,))
+        main_deck = cursor.fetchall()
+        
+        # Get sideboard cards
+        cursor.execute('''
+            SELECT card_name, quantity
+            FROM deck_cards
+            WHERE deck_id = ? AND is_sideboard = TRUE
+            ORDER BY card_name
+        ''', (deck_id,))
+        sideboard = cursor.fetchall()
+        
+        # Check collection quantities for each card
+        def get_collection_quantity(card_name):
+            cursor.execute('''
+                SELECT SUM(quantity) FROM user_collection uc
+                JOIN cards c ON uc.card_id = c.id
+                WHERE c.name = ?
+            ''', (card_name,))
+            result = cursor.fetchone()
+            return result[0] if result[0] else 0
+        
+        # Add collection quantities to main deck
+        main_deck_with_collection = []
+        for card_name, quantity in main_deck:
+            collection_qty = get_collection_quantity(card_name)
+            main_deck_with_collection.append({
+                'name': card_name,
+                'quantity': quantity,
+                'in_collection': collection_qty
+            })
+        
+        # Add collection quantities to sideboard
+        sideboard_with_collection = []
+        for card_name, quantity in sideboard:
+            collection_qty = get_collection_quantity(card_name)
+            sideboard_with_collection.append({
+                'name': card_name,
+                'quantity': quantity,
+                'in_collection': collection_qty
+            })
+        
+        conn.close()
+        
+        deck_data = {
+            'id': deck_id,
+            'name': name,
+            'description': description,
+            'format': format_name,
+            'created_at': created_at,
+            'updated_at': updated_at,
+            'main_deck': main_deck_with_collection,
+            'sideboard': sideboard_with_collection
+        }
+        
+        return render_template('deck_view.html', deck=deck_data)
+        
+    except Exception as e:
+        return f"Error loading deck: {str(e)}", 500
+
+@app.route('/deck/new')
+def deck_new():
+    """Create new deck page"""
+    deck_data = {
+        'id': None,
+        'name': '',
+        'description': '',
+        'format': '',
+        'created_at': '',
+        'updated_at': '',
+        'main_deck_text': '',
+        'sideboard_text': ''
+    }
+    return render_template('deck_edit.html', deck=deck_data)
+
+@app.route('/deck/<int:deck_id>/edit')
+def deck_edit(deck_id):
+    """Edit deck page"""
+    try:
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        
+        # Get deck info
+        cursor.execute('''
+            SELECT id, name, description, format, created_at, updated_at
+            FROM decks
+            WHERE id = ?
+        ''', (deck_id,))
+        deck = cursor.fetchone()
+        
+        if not deck:
+            return "Deck not found", 404
+        
+        deck_id, name, description, format_name, created_at, updated_at = deck
+        
+        # Get main deck cards
+        cursor.execute('''
+            SELECT card_name, quantity
+            FROM deck_cards
+            WHERE deck_id = ? AND is_sideboard = FALSE
+            ORDER BY card_name
+        ''', (deck_id,))
+        main_deck = cursor.fetchall()
+        
+        # Get sideboard cards
+        cursor.execute('''
+            SELECT card_name, quantity
+            FROM deck_cards
+            WHERE deck_id = ? AND is_sideboard = TRUE
+            ORDER BY card_name
+        ''', (deck_id,))
+        sideboard = cursor.fetchall()
+        
+        conn.close()
+        
+        # Format cards for text areas
+        main_deck_text = '\n'.join([f"{qty} {name}" for name, qty in main_deck])
+        sideboard_text = '\n'.join([f"{qty} {name}" for name, qty in sideboard])
+        
+        deck_data = {
+            'id': deck_id,
+            'name': name,
+            'description': description,
+            'format': format_name,
+            'created_at': created_at,
+            'updated_at': updated_at,
+            'main_deck_text': main_deck_text,
+            'sideboard_text': sideboard_text
+        }
+        
+        return render_template('deck_edit.html', deck=deck_data)
+        
+    except Exception as e:
+        return f"Error loading deck for edit: {str(e)}", 500
+
+def validate_cards_in_database(card_names):
+    """Check if all card names exist in the database"""
+    try:
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        
+        missing_cards = []
+        for card_name in card_names:
+            cursor.execute('SELECT COUNT(*) FROM cards WHERE name = ?', (card_name,))
+            count = cursor.fetchone()[0]
+            if count == 0:
+                missing_cards.append(card_name)
+        
+        conn.close()
+        return missing_cards
+        
+    except Exception as e:
+        print(f"Error validating cards: {e}")
+        return card_names  # Return all cards as missing if error
+
+def parse_decklist_text(text):
+    """Parse decklist text into card list"""
+    cards = []
+    if not text.strip():
+        return cards
+    
+    for line in text.strip().split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Try to parse "quantity cardname" format
+        parts = line.split(' ', 1)
+        if len(parts) == 2 and parts[0].isdigit():
+            try:
+                quantity = int(parts[0])
+                card_name = parts[1].strip()
+                if card_name:
+                    cards.append({'name': card_name, 'quantity': quantity})
+            except ValueError:
+                # If first part isn't a number, treat whole line as card name with qty 1
+                cards.append({'name': line, 'quantity': 1})
+        else:
+            # If no quantity specified, assume 1
+            cards.append({'name': line, 'quantity': 1})
+    
+    return cards
+
+@app.route('/update_deck', methods=['POST'])
+def update_deck():
+    """Create or update a deck with validation"""
+    try:
+        data = request.get_json()
+        deck_id = data.get('deck_id')
+        name = data.get('name', '').strip()
+        description = data.get('description', '').strip()
+        format_name = data.get('format', '').strip()
+        main_deck_text = data.get('main_deck_text', '').strip()
+        sideboard_text = data.get('sideboard_text', '').strip()
+        
+        if not name:
+            return jsonify({'success': False, 'message': 'Deck name is required'})
+        
+        # Parse deck lists
+        main_deck = parse_decklist_text(main_deck_text)
+        sideboard = parse_decklist_text(sideboard_text)
+        
+        # Get all unique card names for validation
+        all_card_names = set()
+        for card in main_deck + sideboard:
+            all_card_names.add(card['name'])
+        
+        # Validate cards exist in database
+        missing_cards = validate_cards_in_database(list(all_card_names))
+        if missing_cards:
+            return jsonify({
+                'success': False, 
+                'message': f'Cards not found in database: {", ".join(missing_cards)}'
+            })
+        
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        
+        if deck_id:
+            # Update existing deck
+            cursor.execute('''
+                UPDATE decks 
+                SET name = ?, description = ?, format = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (name, description, format_name, deck_id))
+            
+            # Delete existing deck cards
+            cursor.execute('DELETE FROM deck_cards WHERE deck_id = ?', (deck_id,))
+        else:
+            # Create new deck
+            cursor.execute('''
+                INSERT INTO decks (name, description, format)
+                VALUES (?, ?, ?)
+            ''', (name, description, format_name))
+            deck_id = cursor.lastrowid
+        
+        # Insert main deck cards
+        for card in main_deck:
+            cursor.execute('''
+                INSERT INTO deck_cards (deck_id, card_name, quantity, is_sideboard)
+                VALUES (?, ?, ?, FALSE)
+            ''', (deck_id, card['name'], card['quantity']))
+        
+        # Insert sideboard cards
+        for card in sideboard:
+            cursor.execute('''
+                INSERT INTO deck_cards (deck_id, card_name, quantity, is_sideboard)
+                VALUES (?, ?, ?, TRUE)
+            ''', (deck_id, card['name'], card['quantity']))
+        
+        conn.commit()
+        conn.close()
+        
+        action = 'updated' if data.get('deck_id') else 'created'
+        return jsonify({'success': True, 'message': f'Deck {action} successfully', 'deck_id': deck_id})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error saving deck: {str(e)}'})
+
 if __name__ == '__main__':
     init_db()
+
     host = os.getenv('HOST', '127.0.0.1')
     port = int(os.getenv('PORT', 5001))
     debug = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes', 'on')

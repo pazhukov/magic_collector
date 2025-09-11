@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+
+{% block title %}{{ deck.name }} - Magic Collector{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1><i class="fas fa-layer-group"></i> {{ deck.name }}</h1>
+                {% if deck.description %}
+                    <p class="text-muted mb-0">{{ deck.description }}</p>
+                {% endif %}
+                {% if deck.format %}
+                    <span class="badge bg-secondary">{{ deck.format }}</span>
+                {% endif %}
+            </div>
+            <div>
+                <a href="/deck/{{ deck.id }}/edit" class="btn btn-primary me-2">
+                    <i class="fas fa-edit"></i> Edit Deck
+                </a>
+                <button class="btn btn-danger me-2" onclick="deleteDeck({{ deck.id }}, '{{ deck.name }}')">
+                    <i class="fas fa-trash"></i> Delete Deck
+                </button>
+                <a href="/decks" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Decks
+                </a>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Main Deck -->
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-layer-group"></i> Main Deck 
+                            <span class="badge bg-light text-primary ms-2">
+                                {% set main_deck_total = deck.main_deck|sum(attribute='quantity') %}
+                                {{ main_deck_total }} cards
+                            </span>
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if deck.main_deck %}
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Qty</th>
+                                            <th>Card Name</th>
+                                            <th class="text-center">In Collection</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for card in deck.main_deck %}
+                                        <tr class="{% if card.in_collection >= card.quantity %}table-success{% elif card.in_collection > 0 %}table-warning{% endif %}">
+                                            <td class="fw-bold">{{ card.quantity }}</td>
+                                            <td>{{ card.name }}</td>
+                                            <td class="text-center">
+                                                {% if card.in_collection >= card.quantity %}
+                                                    <span class="badge bg-success">
+                                                        <i class="fas fa-check"></i> {{ card.in_collection }}
+                                                    </span>
+                                                {% elif card.in_collection > 0 %}
+                                                    <span class="badge bg-warning text-dark">
+                                                        <i class="fas fa-exclamation-triangle"></i> {{ card.in_collection }}
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-danger">
+                                                        <i class="fas fa-times"></i> 0
+                                                    </span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="text-center py-4">
+                                <i class="fas fa-layer-group fa-2x text-muted mb-2"></i>
+                                <p class="text-muted">No cards in main deck</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sideboard -->
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0">
+                            <i class="fas fa-layer-group"></i> Sideboard
+                            <span class="badge bg-light text-warning ms-2">
+                                {% set sideboard_total = deck.sideboard|sum(attribute='quantity') %}
+                                {{ sideboard_total }} cards
+                            </span>
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if deck.sideboard %}
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Qty</th>
+                                            <th>Card Name</th>
+                                            <th class="text-center">In Collection</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for card in deck.sideboard %}
+                                        <tr class="{% if card.in_collection >= card.quantity %}table-success{% elif card.in_collection > 0 %}table-warning{% endif %}">
+                                            <td class="fw-bold">{{ card.quantity }}</td>
+                                            <td>{{ card.name }}</td>
+                                            <td class="text-center">
+                                                {% if card.in_collection >= card.quantity %}
+                                                    <span class="badge bg-success">
+                                                        <i class="fas fa-check"></i> {{ card.in_collection }}
+                                                    </span>
+                                                {% elif card.in_collection > 0 %}
+                                                    <span class="badge bg-warning text-dark">
+                                                        <i class="fas fa-exclamation-triangle"></i> {{ card.in_collection }}
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-danger">
+                                                        <i class="fas fa-times"></i> 0
+                                                    </span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="text-center py-4">
+                                <i class="fas fa-layer-group fa-2x text-muted mb-2"></i>
+                                <p class="text-muted">No cards in sideboard</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Collection Status Summary -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-pie"></i> Collection Status
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% set total_cards = deck.main_deck|sum(attribute='quantity') + deck.sideboard|sum(attribute='quantity') %}
+                        {% set owned_cards = 0 %}
+                        {% set partial_cards = 0 %}
+                        {% set missing_cards = 0 %}
+                        
+                        {% for card in deck.main_deck %}
+                            {% if card.in_collection >= card.quantity %}
+                                {% set owned_cards = owned_cards + card.quantity %}
+                            {% elif card.in_collection > 0 %}
+                                {% set partial_cards = partial_cards + 1 %}
+                            {% else %}
+                                {% set missing_cards = missing_cards + 1 %}
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% for card in deck.sideboard %}
+                            {% if card.in_collection >= card.quantity %}
+                                {% set owned_cards = owned_cards + card.quantity %}
+                            {% elif card.in_collection > 0 %}
+                                {% set partial_cards = partial_cards + 1 %}
+                            {% else %}
+                                {% set missing_cards = missing_cards + 1 %}
+                            {% endif %}
+                        {% endfor %}
+                        
+                        <div class="row text-center">
+                            <div class="col-md-4">
+                                <div class="card bg-success text-white">
+                                    <div class="card-body">
+                                        <h4 class="card-title">{{ owned_cards }}</h4>
+                                        <p class="card-text">Cards Owned</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-warning text-dark">
+                                    <div class="card-body">
+                                        <h4 class="card-title">{{ partial_cards }}</h4>
+                                        <p class="card-text">Partially Owned</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-danger text-white">
+                                    <div class="card-body">
+                                        <h4 class="card-title">{{ missing_cards }}</h4>
+                                        <p class="card-text">Missing Cards</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="progress mt-3" style="height: 20px;">
+                            {% set completion_percentage = (owned_cards / total_cards * 100) if total_cards > 0 else 0 %}
+                            <div class="progress-bar bg-success" role="progressbar" style="width: {{ completion_percentage }}%">
+                                {{ "%.1f"|format(completion_percentage) }}% Complete
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Deck Info Footer -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <small class="text-muted">
+                                    <strong>Created:</strong> {{ deck.created_at|strftime('%Y-%m-%d %H:%M') }}
+                                </small>
+                            </div>
+                            <div class="col-md-6">
+                                {% if deck.updated_at != deck.created_at %}
+                                <small class="text-muted">
+                                    <strong>Last Updated:</strong> {{ deck.updated_at|strftime('%Y-%m-%d %H:%M') }}
+                                </small>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.table-success {
+    background-color: rgba(25, 135, 84, 0.1) !important;
+}
+
+.table-warning {
+    background-color: rgba(255, 193, 7, 0.1) !important;
+}
+
+.table-danger {
+    background-color: rgba(220, 53, 69, 0.1) !important;
+}
+
+.card-header h5 {
+    font-weight: 600;
+}
+
+.badge {
+    font-size: 0.8em;
+}
+
+.progress {
+    border-radius: 10px;
+}
+
+.progress-bar {
+    border-radius: 10px;
+}
+</style>
+
+<script>
+function deleteDeck(deckId, deckName) {
+    if (confirm(`Are you sure you want to delete the deck "${deckName}"?\n\nThis action cannot be undone.`)) {
+        // Show second confirmation for extra safety
+        const doubleConfirmed = confirm(
+            `🚨 FINAL WARNING 🚨\n\n` +
+            `You are about to permanently delete the deck "${deckName}"!\n\n` +
+            `This will also delete all associated cards.\n\n` +
+            `Type "DELETE" in the next prompt to confirm.`
+        );
+        
+        if (!doubleConfirmed) {
+            return;
+        }
+        
+        // Final confirmation with text input
+        const userInput = prompt(
+            `Type "DELETE" (in all caps) to permanently delete the deck "${deckName}":`
+        );
+        
+        if (userInput !== 'DELETE') {
+            alert('Deck deletion cancelled.');
+            return;
+        }
+        
+        // Proceed with deleting the deck
+        fetch('/delete_deck', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ deck_id: deckId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Deck deleted successfully!');
+                window.location.href = '/decks';
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting deck');
+        });
+    }
+}
+</script>
+{% endblock %}

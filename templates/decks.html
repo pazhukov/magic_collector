@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Decks - Magic Collector{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1><i class="fas fa-layer-group"></i> My Decks</h1>
+            <a href="/deck/new" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Add New Deck
+            </a>
+        </div>
+
+        {% if decks %}
+            <div class="row">
+                {% for deck in decks %}
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card h-100 deck-card" style="cursor: pointer;" onclick="viewDeck({{ deck.id }})">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">{{ deck.name }}</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if deck.description %}
+                                <p class="card-text text-muted">{{ deck.description }}</p>
+                            {% endif %}
+                            {% if deck.format %}
+                                <span class="badge bg-secondary mb-3">{{ deck.format }}</span>
+                            {% endif %}
+                            
+                            <div class="row text-center">
+                                <div class="col-6">
+                                    <div class="card bg-light">
+                                        <div class="card-body py-2">
+                                            <h6 class="text-primary mb-1">Main Deck</h6>
+                                            <h4 class="text-primary mb-0">
+                                                {% set main_deck_total = deck.main_deck|sum(attribute='1') %}
+                                                {{ main_deck_total }}
+                                            </h4>
+                                            <small class="text-muted">cards</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="card bg-light">
+                                        <div class="card-body py-2">
+                                            <h6 class="text-warning mb-1">Sideboard</h6>
+                                            <h4 class="text-warning mb-0">
+                                                {% set sideboard_total = deck.sideboard|sum(attribute='1') %}
+                                                {{ sideboard_total }}
+                                            </h4>
+                                            <small class="text-muted">cards</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer text-muted">
+                            <small>
+                                Created: {{ deck.created_at|strftime('%Y-%m-%d') }}
+                                {% if deck.updated_at != deck.created_at %}
+                                    | Updated: {{ deck.updated_at|strftime('%Y-%m-%d') }}
+                                {% endif %}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-layer-group fa-3x text-muted mb-3"></i>
+                <h3 class="text-muted">No decks yet</h3>
+                <p class="text-muted">Create your first deck to get started!</p>
+                <a href="/deck/new" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Add Your First Deck
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+
+<script>
+function viewDeck(deckId) {
+    window.location.href = `/deck/${deckId}`;
+}
+</script>
+
+<style>
+.deck-card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.deck-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+</style>
+{% endblock %}
