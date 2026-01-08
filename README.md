@@ -13,6 +13,7 @@ A comprehensive Python web application for collecting, managing, and trading Mag
 - **Advanced Search**: Search through cards by name, type, oracle text, and other attributes
 - **Data Storage**: All data is stored locally in a SQLite database for offline access
 - **API Integration**: Fetches data from the official Scryfall API with automatic updates
+- **Elasticsearch Integration**: Index all MTG cards into Elasticsearch for advanced search and analytics
 
 ### Collection Features
 - Add/remove cards from your personal collection
@@ -69,6 +70,16 @@ DATABASE=magic_collector.db
 HOST=127.0.0.1
 PORT=5001
 DEBUG=False
+
+# Elasticsearch configuration (for ELK integration)
+ELASTICSEARCH_HOST=localhost
+ELASTICSEARCH_PORT=9200
+ELASTICSEARCH_USER=your_user
+ELASTICSEARCH_PASSWORD=your_password
+ELASTICSEARCH_INDEX=mtg_cards
+ELASTICSEARCH_USE_SSL=false
+ELASTICSEARCH_VERIFY_CERTS=true
+BULK_DELAY_SECONDS=0.1
 ```
 
 ### Configuration Options
@@ -77,6 +88,14 @@ DEBUG=False
 - **HOST**: Server host address (default: `127.0.0.1`)
 - **PORT**: Server port number (default: `5001`)
 - **DEBUG**: Enable debug mode (default: `False`)
+- **ELASTICSEARCH_HOST**: Elasticsearch server host (default: `localhost`)
+- **ELASTICSEARCH_PORT**: Elasticsearch server port (default: `9200`)
+- **ELASTICSEARCH_USER**: Elasticsearch username (optional)
+- **ELASTICSEARCH_PASSWORD**: Elasticsearch password (optional)
+- **ELASTICSEARCH_INDEX**: Elasticsearch index name for MTG cards (default: `mtg_cards`)
+- **ELASTICSEARCH_USE_SSL**: Use HTTPS for Elasticsearch connection (default: `false`)
+- **ELASTICSEARCH_VERIFY_CERTS**: Verify SSL certificates (default: `true`)
+- **BULK_DELAY_SECONDS**: Delay between bulk indexing operations in seconds (default: `0.1`)
 
 ### Example .env File
 
@@ -128,6 +147,11 @@ If no `.env` file is present, the application will use the default values.
 8. **Search Cards**:
    - Use the search functionality to find specific cards
    - Search by name, type, or oracle text
+
+9. **Elasticsearch Integration** (Optional):
+   - Create Elasticsearch index for advanced search capabilities
+   - Load all cards from bulk data into Elasticsearch
+   - See "ELK Integration" section below for details
 
 ## API Endpoints
 
@@ -200,15 +224,128 @@ The application uses SQLite with the following tables:
 - Support for both foil and non-foil card variants
 - Historical data tracking for prices and legalities
 
+## ELK Integration
+
+The application includes scripts to index all MTG cards into Elasticsearch for advanced search, analytics, and full-text search capabilities.
+
+### Prerequisites
+
+1. **Elasticsearch Installation**: Ensure Elasticsearch is installed and running
+   - Download from [Elasticsearch Downloads](https://www.elastic.co/downloads/elasticsearch)
+   - Or use Docker
+
+2. **Configuration**: Add Elasticsearch settings to your `.env` file (see Configuration section)
+
+### ELK Scripts
+
+#### 1. Create Elasticsearch Index
+
+The `create_elk_index.py` script creates an Elasticsearch index with proper mappings for all card fields:
+
+```bash
+python create_elk_index.py
+```
+
+**What it does:**
+- Creates an index named `mtg_cards` (or as specified in `.env`)
+- Defines mappings for all card fields from the SQLite `cards` table
+- Includes nested mappings for `prices_history` from `card_prices_history` table
+- Sets up proper field types (text, keyword, date, nested, etc.)
+- Configures analyzers for card name searching
+
+**Features:**
+- All card fields indexed (name, mana_cost, type_line, oracle_text, etc.)
+- Prices history stored as nested documents
+- Support for double-faced cards (card_faces)
+- Full-text search capabilities
+- Keyword fields for exact matching
+
+#### 2. Load Bulk Data to Elasticsearch
+
+The `load_bulk_cards_to_elk.py` script downloads and indexes all cards from Scryfall's bulk data API:
+
+```bash
+python load_bulk_cards_to_elk.py
+```
+
+**What it does:**
+- Downloads bulk card data from Scryfall API (default_cards dataset)
+- Clears all existing documents from the index before loading
+- Indexes all cards into Elasticsearch using bulk API
+- Processes prices history from current prices
+- Provides progress tracking and error handling
+
+**Features:**
+- Automatic clearing of existing documents before load
+- Bulk indexing for performance (configurable batch size)
+- Configurable delay between bulk operations to prevent overwhelming Elasticsearch
+- Progress reporting every 10,000 cards
+- Error handling and retry logic
+- Verification of indexed cards after completion
+
+**Bulk Data Loading:**
+- Downloads the complete default_cards dataset from Scryfall
+- Processes gzipped JSON data
+- Indexes all card fields including:
+  - Basic card information (name, mana cost, type, etc.)
+  - Prices and prices history
+  - Legalities across formats
+  - Card images and URIs
+  - Double-faced card data
+  - Color identity and mana symbols
+
+### Usage Workflow
+
+1. **Start Elasticsearch**: Ensure your Elasticsearch instance is running
+
+2. **Create the Index**:
+   ```bash
+   python create_elk_index.py
+   ```
+
+3. **Load Card Data**:
+   ```bash
+   python load_bulk_cards_to_elk.py
+   ```
+   ⚠️ **Warning**: This will download and index ALL cards from Scryfall (hundreds of thousands of cards). This process may take significant time and bandwidth.
+
+4. **Verify**: The script will automatically verify the indexed cards and show statistics
+
+### Index Structure
+
+The Elasticsearch index includes:
+
+- **Card Fields**: All fields from the SQLite `cards` table
+- **Prices History**: Nested documents with price_type, price_value, currency, and recorded_at
+- **Current Prices**: Object with USD, EUR, TIX prices
+- **Card Faces**: Nested array for double-faced cards
+- **Legalities**: Object with format names and legality status
+- **Images**: Object with various image URI sizes
+
+### Performance Tips
+
+- **Batch Size**: Default is 100 cards per batch. Adjust based on your Elasticsearch cluster size
+- **Bulk Delay**: Default is 0.1 seconds. Increase if Elasticsearch is being overwhelmed
+- **Index Settings**: The index is created with 1 shard and 0 replicas by default (adjustable in `create_elk_index.py`)
+
+### Troubleshooting
+
+- **Connection Issues**: Check Elasticsearch is running and accessible at the configured host/port
+- **SSL Errors**: Set `ELASTICSEARCH_VERIFY_CERTS=false` for self-signed certificates
+- **Timeout Errors**: Increase `BULK_DELAY_SECONDS` or reduce batch size
+- **Index Not Found**: Run `create_elk_index.py` before loading data
+
 ## Data Sources
 
 - [Scryfall API - Sets](https://scryfall.com/docs/api/sets/all)
 - [Scryfall API - Cards](https://scryfall.com/docs/api/cards/collector)
+- [Scryfall Bulk Data API](https://scryfall.com/docs/api/bulk-data)
 
 ## Technologies Used
 
 - **Backend**: Python Flask
 - **Database**: SQLite
+- **Search Engine**: Elasticsearch (optional, for ELK integration)
 - **Frontend**: HTML, Bootstrap 5, Font Awesome
 - **API**: Scryfall REST API
 - **Data Format**: JSON
@@ -274,3 +411,6 @@ The application uses SQLite with the following tables:
 - Support for double-sided cards and complex card types
 - Automatic collection updates when recording trades
 - Real-time collection value calculation based on current market prices
+- **Elasticsearch Integration**: Optional but recommended for advanced search capabilities and analytics
+- Bulk data loading scripts allow you to index all MTG cards for full-text search and complex queries
+- Elasticsearch index includes all card fields plus prices history in a single unified index
